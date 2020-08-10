@@ -4,7 +4,7 @@ Learn web development with Go. Live demo: https://freshman-news.herokuapp.com/
 
 Here's what the completed application looks like:
 
-![demo](https://res.cloudinary.com/freshman/image/upload/v1566482694/Screenshot_from_2019-08-22_15-04-27.png)
+![demo]
 
 The code in this repo is meant to be a reference point for anyone following along with the [tutorial](https://freshman.tech/web-development-with-go/).
 
