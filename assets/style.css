@@ -170,4 +170,7 @@ form {
   .article-image {
     display: none;
   }
+  .indent {
+    text-indent: 50px;
+  }
 }

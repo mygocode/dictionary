@@ -2,74 +2,45 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
-	"math"
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
-	"time"
 )
 
 var tpl = template.Must(template.ParseFiles("index.html"))
 var apiKey *string
 
-type Source struct {
-	ID   interface{} `json:"id"`
-	Name string      `json:"name"`
-}
-
-type Article struct {
-	Source      Source    `json:"source"`
-	Author      string    `json:"author"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	URL         string    `json:"url"`
-	URLToImage  string    `json:"urlToImage"`
-	PublishedAt time.Time `json:"publishedAt"`
-	Content     string    `json:"content"`
-}
-
-func (a *Article) FormatPublishedDate() string {
-	year, month, day := a.PublishedAt.Date()
-	return fmt.Sprintf("%v %d, %d", month, day, year)
-}
-
 type Results struct {
-	Status       string    `json:"status"`
-	TotalResults int       `json:"totalResults"`
-	Articles     []Article `json:"articles"`
+	Word      string      `json:"word"`
+	Phonetics []Phonetics `json:"phonetics"`
+	Origin    string      `json:"origin"`
+	Meaning   Meaning     `json:"meaning"`
+}
+type Phonetics struct {
+	Text  string `json:"text"`
+	Audio string `json:"audio"`
+}
+type Meaning struct {
+	Noun []Noun `json:"noun"`
+	Verb []Verb `json:"verb"`
+}
+type Noun struct {
+	Definition string `json:"definition"`
+	Example    string `json:"example"`
+}
+type Verb struct {
+	Definition string   `json:"definition"`
+	Example    string   `json:"example"`
+	Synonyms   []string `json:"synonyms"`
 }
 
-type Search struct {
-	SearchKey  string
-	NextPage   int
-	TotalPages int
-	Results    Results
-}
-
-func (s *Search) IsLastPage() bool {
-	return s.NextPage >= s.TotalPages
-}
-
-func (s *Search) PreviousPage() int {
-	return s.CurrentPage() - 1
-}
-
-func (s *Search) CurrentPage() int {
-	if s.NextPage == 1 {
-		return s.NextPage
-	}
-
-	return s.NextPage - 1
-}
-
-type NewsAPIError struct {
-	Status  string `json:"status"`
-	Code    string `json:"code"`
+type DictionaryError struct {
+	// Status  string `json:"status"`
+	// Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
@@ -79,6 +50,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 
 func searchHandler(w http.ResponseWriter, r *http.Request) {
 	u, err := url.Parse(r.URL.String())
+
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Internal server error"))
@@ -87,25 +59,10 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 
 	params := u.Query()
 	searchKey := params.Get("q")
-	page := params.Get("page")
-	if page == "" {
-		page = "1"
-	}
 
-	search := &Search{}
-	search.SearchKey = searchKey
-
-	next, err := strconv.Atoi(page)
-	if err != nil {
-		http.Error(w, "Unexpected server error", http.StatusInternalServerError)
-		return
-	}
-
-	search.NextPage = next
-	pageSize := 20
-
-	endpoint := fmt.Sprintf("https://newsapi.org/v2/everything?q=%s&pageSize=%d&page=%d&apiKey=%s&sortBy=publishedAt&language=en", url.QueryEscape(search.SearchKey), pageSize, search.NextPage, *apiKey)
-	resp, err := http.Get(endpoint)
+	url := fmt.Sprintf("https://api.dictionaryapi.dev/api/v1/entries/en/%s", searchKey)
+	req, _ := http.NewRequest("GET", url, nil)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -114,9 +71,8 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		newError := &NewsAPIError{}
+		newError := &DictionaryError{}
 		err := json.NewDecoder(resp.Body).Decode(newError)
-
 		if err != nil {
 			http.Error(w, "Unexpected server error", http.StatusInternalServerError)
 			return
@@ -126,18 +82,24 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = json.NewDecoder(resp.Body).Decode(&search.Results)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+	body, _ := ioutil.ReadAll(resp.Body)
 
-	search.TotalPages = int(math.Ceil(float64(search.Results.TotalResults / pageSize)))
-	if ok := !search.IsLastPage(); ok {
-		search.NextPage++
-	}
+	respBody := []byte(string(body))
+	resultStruts := []Results{}
 
-	err = tpl.Execute(w, search)
+	// var noResult = ""
+	// for _, value := range resultStruts {
+	// 	if len(value.Meaning.Noun) == 0 {
+	// 		noResult = "No Result"
+	// 		json.Unmarshal(respBody, &noResult)
+	// 		return
+	// 	} else {
+	// 		break
+	// 	}
+	// }
+
+	json.Unmarshal(respBody, &resultStruts)
+	err = tpl.Execute(w, resultStruts)
 	if err != nil {
 		log.Println(err)
 	}
@@ -146,14 +108,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "3000"
-	}
-
-	apiKey = flag.String("apikey", "", "Newsapi.org access key")
-	flag.Parse()
-
-	if *apiKey == "" {
-		log.Fatal("apiKey must be set")
+		port = "3001"
 	}
 
 	mux := http.NewServeMux()
