@@ -12,7 +12,6 @@ import (
 )
 
 var tpl = template.Must(template.ParseFiles("index.html"))
-var apiKey *string
 
 type Results struct {
 	Word      string      `json:"word"`
@@ -59,6 +58,10 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 
 	params := u.Query()
 	searchKey := params.Get("q")
+	if len(searchKey) == 0 {
+		tpl.Execute(w, nil)
+		return
+	}
 
 	url := fmt.Sprintf("https://api.dictionaryapi.dev/api/v1/entries/en/%s", searchKey)
 	req, _ := http.NewRequest("GET", url, nil)
@@ -87,17 +90,6 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	respBody := []byte(string(body))
 	resultStruts := []Results{}
 
-	// var noResult = ""
-	// for _, value := range resultStruts {
-	// 	if len(value.Meaning.Noun) == 0 {
-	// 		noResult = "No Result"
-	// 		json.Unmarshal(respBody, &noResult)
-	// 		return
-	// 	} else {
-	// 		break
-	// 	}
-	// }
-
 	json.Unmarshal(respBody, &resultStruts)
 	err = tpl.Execute(w, resultStruts)
 	if err != nil {
@@ -112,7 +104,6 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-
 	fs := http.FileServer(http.Dir("assets"))
 	mux.Handle("/assets/", http.StripPrefix("/assets/", fs))
 
